@@ -34,8 +34,8 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/username/clear_exif.git
-cd clear_exif
+git clone <仓库地址>
+cd exif_cleaner
 ```
 
 ### 2. 创建虚拟环境
@@ -83,7 +83,7 @@ python -m src.main
 ## 项目结构
 
 ```
-clear_exif/
+exif_cleaner/
 ├── src/                    # 源代码目录
 │   ├── __init__.py         # 包初始化文件
 │   ├── main.py             # 主程序入口
@@ -94,12 +94,13 @@ clear_exif/
 │   └── update_checker.py   # 更新检查功能
 ├── config/                 # 配置目录
 │   └── version.json        # 版本信息文件
-├── logs/                   # 日志目录
-│   └── update_log.md       # 更新日志文件
-├── requirements.txt        # 项目依赖
 ├── .gitignore              # Git忽略文件
+├── CHANGELOG.md            # 更新日志
 ├── LICENSE                 # 许可证
-└── README.md               # 项目说明文档
+├── README.md               # 项目说明文档
+├── requirements.txt        # 项目依赖
+├── test_exif.py            # EXIF处理测试
+└── test_performance.py     # 性能测试
 ```
 
 ## 开发说明
@@ -124,7 +125,7 @@ clear_exif/
 
 ## 更新日志
 
-详细的更新日志请查看`logs/update_log.md`文件。
+详细的更新日志请查看`CHANGELOG.md`文件。
 
 ---
 
