@@ -1,0 +1,6 @@
+{
+  "version": "1.0.0",
+  "app_name": "EXIF Cleaner",
+  "description": "A tool to batch remove EXIF information from images",
+  "repository": "https://github.com/username/clear_exif"
+}
