@@ -14,7 +14,20 @@ class ExifCleanerGUI:
     def __init__(self, root):
         self.root = root
         
-        self.root.geometry("1280x800")
+        # 设置窗口大小
+        window_width = 1280
+        window_height = 800
+        
+        # 获取屏幕尺寸
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        
+        # 计算居中位置
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        
+        # 设置窗口位置和大小
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.root.resizable(True, True)
         
         # 初始化组件
@@ -40,6 +53,11 @@ class ExifCleanerGUI:
         # 数据
         self.selected_files = []
         self.exif_tags_to_remove = []
+        
+        # EXIF标签相关
+        self.all_exif_tags = self._get_all_exif_tags()  # 所有可能的EXIF标签
+        self.exif_checkboxes = {}  # 存储所有EXIF标签的复选框
+        self.current_image_exif = {}  # 当前选中图片的EXIF信息
         
         # 创建UI
         self._create_widgets()
@@ -164,6 +182,9 @@ class ExifCleanerGUI:
         self.file_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         file_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
+        # 添加文件选择事件监听器
+        self.file_tree.bind('<<TreeviewSelect>>', self._on_file_select)
+        
         # EXIF信息和选项框架
         exif_frame = ttk.LabelFrame(main_frame, text="EXIF选项")
         exif_frame.grid(row=4, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -171,39 +192,42 @@ class ExifCleanerGUI:
         exif_frame.columnconfigure(1, weight=1)
         exif_frame.rowconfigure(0, weight=1)
         
-        # 左半部分：EXIF信息预览
-        info_frame = ttk.LabelFrame(exif_frame, text="EXIF信息预览")
+        # 左半部分：EXIF信息列表（复选框）
+        info_frame = ttk.LabelFrame(exif_frame, text="EXIF信息列表")
         info_frame.grid(row=0, column=0, pady=5, padx=5, sticky=(tk.W, tk.E, tk.N, tk.S))
         info_frame.columnconfigure(0, weight=1)
-        info_frame.rowconfigure(0, weight=1)
         
-        self.exif_info_text = tk.Text(info_frame, width=40, height=15, wrap=tk.WORD, font=('微软雅黑', 10))
-        self.exif_info_scrollbar = ttk.Scrollbar(info_frame, orient=tk.VERTICAL, command=self.exif_info_text.yview)
-        self.exif_info_text.configure(yscrollcommand=self.exif_info_scrollbar.set)
+        # 创建内部框架放置复选框
+        self.checkbox_inner_frame = ttk.Frame(info_frame)
+        self.checkbox_inner_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        self.exif_info_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.exif_info_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        # 创建复选框
+        self.exif_var_dict = {}
+        self.create_exif_checkboxes()
         
-        # 右半部分：选择性删除选项
-        options_frame = ttk.LabelFrame(exif_frame, text="选择性删除")
+        # 右半部分：操作按钮和说明
+        options_frame = ttk.LabelFrame(exif_frame, text="操作选项")
         options_frame.grid(row=0, column=1, pady=5, padx=5, sticky=(tk.W, tk.E, tk.N, tk.S))
         options_frame.columnconfigure(0, weight=1)
         options_frame.rowconfigure(1, weight=1)
         
         # 全选/取消全选按钮
-        select_all_btn = ttk.Button(options_frame, text="全选", command=self._select_all_tags)
-        select_all_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        button_row = ttk.Frame(options_frame)
+        button_row.pack(fill=tk.X, padx=5, pady=5)
         
-        deselect_all_btn = ttk.Button(options_frame, text="取消全选", command=self._deselect_all_tags)
-        deselect_all_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        select_all_btn = ttk.Button(button_row, text="全选", command=self._select_all_tags)
+        select_all_btn.pack(side=tk.LEFT, padx=5)
         
-        # 标签列表
-        self.tags_listbox = tk.Listbox(options_frame, selectmode=tk.MULTIPLE, width=40, height=10, font=('微软雅黑', 10))
-        self.tags_scrollbar = ttk.Scrollbar(options_frame, orient=tk.VERTICAL, command=self.tags_listbox.yview)
-        self.tags_listbox.configure(yscrollcommand=self.tags_scrollbar.set)
+        deselect_all_btn = ttk.Button(button_row, text="取消全选", command=self._deselect_all_tags)
+        deselect_all_btn.pack(side=tk.LEFT, padx=5)
         
-        self.tags_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.tags_scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
+        # 当前选中图片信息
+        info_text = ttk.Label(options_frame, text="说明:", style='Bold.TLabel')
+        info_text.pack(anchor=tk.W, padx=5, pady=5)
+        
+        info_content = ttk.Label(options_frame, text="1. 勾选需要清除的EXIF信息\n2. 未勾选的EXIF信息将被保留\n3. 图片中不存在的EXIF信息会显示为未勾选\n4. 选择图片后会高亮显示该图片包含的EXIF信息", 
+                                wraplength=300, justify=tk.LEFT)
+        info_content.pack(anchor=tk.W, padx=5, pady=5)
         
         # 删除所选标签按钮
         remove_selected_btn = ttk.Button(options_frame, text="删除所选EXIF", command=self._remove_selected_exif)
@@ -240,6 +264,25 @@ class ExifCleanerGUI:
                 file_info = self.file_handler.get_file_info(file_path)
                 self.file_tree.insert('', tk.END, values=(file_info['name'], file_info['size'], file_path))
         self.status_var.set(f"已选择 {len(self.selected_files)} 个文件")
+        
+        # 如果只有一个文件被选择，更新EXIF信息和复选框状态
+        if len(self.selected_files) == 1:
+            self._update_exif_info(self.selected_files[0])
+    
+    def _update_exif_info(self, file_path):
+        """更新EXIF信息和复选框状态"""
+        # 获取当前文件的EXIF信息
+        self.current_image_exif = self.exif_processor.get_exif_info(file_path)
+        
+        # 重置所有复选框样式
+        for tag_name in self.exif_checkboxes:
+            self.exif_checkboxes[tag_name].configure(style='')
+        
+        # 高亮显示当前文件包含的EXIF标签
+        for tag_name in self.current_image_exif:
+            if tag_name in self.exif_checkboxes:
+                # 可以添加高亮样式，这里简单地使用加粗
+                self.exif_checkboxes[tag_name].configure(style='Bold.TCheckbutton')
     
     def _clear_list(self):
         """清空文件列表"""
@@ -247,8 +290,15 @@ class ExifCleanerGUI:
         for item in self.file_tree.get_children():
             self.file_tree.delete(item)
         self.status_var.set("就绪")
-        self.exif_info_text.delete(1.0, tk.END)
-        self.tags_listbox.delete(0, tk.END)
+        self.current_image_exif = {}
+        
+        # 重置所有复选框状态
+        for tag_name in self.exif_var_dict:
+            self.exif_var_dict[tag_name].set(False)
+        
+        # 重置所有复选框样式
+        for tag_name in self.exif_checkboxes:
+            self.exif_checkboxes[tag_name].configure(style='')
     
     def _remove_all_exif(self):
         """删除所有EXIF信息"""
@@ -285,7 +335,12 @@ class ExifCleanerGUI:
             messagebox.showwarning("警告", "未选择文件")
             return
         
-        selected_tags = [self.tags_listbox.get(i) for i in self.tags_listbox.curselection()]
+        # 获取所有被勾选的EXIF标签
+        selected_tags = []
+        for tag_name, var in self.exif_var_dict.items():
+            if var.get():
+                selected_tags.append(tag_name)
+        
         if not selected_tags:
             messagebox.showwarning("警告", "未选择EXIF标签")
             return
@@ -346,11 +401,27 @@ class ExifCleanerGUI:
     
     def _select_all_tags(self):
         """全选EXIF标签"""
-        self.tags_listbox.select_set(0, tk.END)
+        for tag_name in self.exif_var_dict:
+            self.exif_var_dict[tag_name].set(True)
     
     def _deselect_all_tags(self):
         """取消全选EXIF标签"""
-        self.tags_listbox.select_clear(0, tk.END)
+        for tag_name in self.exif_var_dict:
+            self.exif_var_dict[tag_name].set(False)
+    
+    def _on_file_select(self, event):
+        """文件选择事件处理"""
+        # 获取选中的文件
+        selected_items = self.file_tree.selection()
+        if not selected_items:
+            return
+        
+        # 只处理第一个选中的文件
+        item = selected_items[0]
+        file_path = self.file_tree.item(item, 'values')[2]
+        
+        # 更新EXIF信息和复选框状态
+        self._update_exif_info(file_path)
     
     def _check_updates(self):
         """检查更新"""
@@ -508,6 +579,89 @@ class ExifCleanerGUI:
             webbrowser.open(repo_url)
         else:
             messagebox.showinfo("提示", "未配置GitHub仓库地址")
+    
+    def create_exif_checkboxes(self):
+        """创建所有EXIF标签的复选框，使用多列显示"""
+        # 清空当前复选框
+        for widget in self.checkbox_inner_frame.winfo_children():
+            widget.destroy()
+        
+        # 清空之前的变量和复选框字典
+        self.exif_var_dict.clear()
+        self.exif_checkboxes.clear()
+        
+        # 配置内部框架的列权重，增加到4列
+        self.checkbox_inner_frame.columnconfigure(0, weight=1)
+        self.checkbox_inner_frame.columnconfigure(1, weight=1)
+        self.checkbox_inner_frame.columnconfigure(2, weight=1)
+        self.checkbox_inner_frame.columnconfigure(3, weight=1)
+        
+        # 设置每行显示的列数，增加到4列
+        columns = 4
+        
+        # 为每个EXIF标签创建复选框，默认全部勾选
+        sorted_tags = sorted(self.all_exif_tags.items())
+        total_tags = len(sorted_tags)
+        
+        for i, (tag_name, tag_cn) in enumerate(sorted_tags):
+            var = tk.BooleanVar()
+            var.set(True)  # 默认全部勾选
+            
+            # 创建复选框，显示中文名称
+            checkbox = ttk.Checkbutton(
+                self.checkbox_inner_frame,
+                text=tag_cn,
+                variable=var,
+                onvalue=True,
+                offvalue=False
+            )
+            
+            # 计算行号和列号
+            row = i // columns
+            col = i % columns
+            
+            # 放置复选框
+            checkbox.grid(row=row, column=col, sticky=tk.W, padx=10, pady=1)  # 调整内边距
+            
+            # 保存变量和复选框，使用英文标签名作为键
+            self.exif_var_dict[tag_name] = var
+            self.exif_checkboxes[tag_name] = checkbox
+    
+    def _get_all_exif_tags(self):
+        """获取精简的可删除EXIF标签，返回中英文对照字典"""
+        # 精简的可删除EXIF信息列表，中英文对照
+        common_exif_tags = {
+            # GPS相关信息（隐私敏感）
+            'GPSLatitude': 'GPS纬度',
+            'GPSLongitude': 'GPS经度',
+            'GPSAltitude': 'GPS海拔',
+            'GPSDateTime': 'GPS日期时间',
+            'GPSDateStamp': 'GPS日期',
+            'GPSTimeStamp': 'GPS时间',
+            
+            # 相机和设备信息
+            'Make': '相机品牌',
+            'Model': '相机型号',
+            'CameraOwnerName': '相机所有者',
+            'BodySerialNumber': '相机序列号',
+            'LensMake': '镜头品牌',
+            'LensModel': '镜头型号',
+            'FirmwareVersion': '固件版本',
+            
+            # 拍摄信息
+            'DateTimeOriginal': '拍摄日期时间',
+            'DateTimeDigitized': '数字化日期时间',
+            
+            # 其他隐私相关信息
+            'Artist': '作者',
+            'Copyright': '版权信息',
+            'ImageDescription': '图像描述',
+            'UserComment': '用户注释',
+            'HostComputer': '拍摄设备',
+            'Software': '处理软件',
+        }
+        
+        return common_exif_tags
     
     def run(self):
         """运行应用"""
