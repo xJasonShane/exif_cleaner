@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
-import os
 from .file_handler import FileHandler
 from .exif_processor import ExifProcessor
 from .update_checker import UpdateChecker
@@ -12,7 +13,6 @@ class ExifCleanerGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("EXIF清除工具")
         self.root.geometry("800x600")
         self.root.resizable(True, True)
         
@@ -22,19 +22,26 @@ class ExifCleanerGUI:
         self.update_checker = UpdateChecker()
         self.version_manager = VersionManager()
         
+        # 设置标题
+        app_name = self.version_manager.get_app_name()
+        self.root.title(f"{app_name} - EXIF清除工具")
+        
         # 数据
         self.selected_files = []
         self.exif_tags_to_remove = []
         
         # 创建UI
         self._create_widgets()
-        self._setup_drag_and_drop()
-        
-        # 检查更新
-        self._check_updates()
     
     def _create_widgets(self):
         """创建UI组件"""
+        # 设置统一字体
+        default_font = ('微软雅黑', 10)
+        
+        # 为所有ttk组件设置统一字体
+        style = ttk.Style()
+        style.configure('.', font=default_font)
+        
         # 创建主框架
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -72,6 +79,10 @@ class ExifCleanerGUI:
         self.remove_exif_btn = ttk.Button(button_frame, text="删除全部EXIF", command=self._remove_all_exif)
         self.remove_exif_btn.pack(side=tk.RIGHT, padx=5)
         
+        # 检查更新按钮
+        self.check_update_btn = ttk.Button(button_frame, text="检查更新", command=self._check_updates)
+        self.check_update_btn.pack(side=tk.RIGHT, padx=5)
+        
         # 文件列表框架
         file_frame = ttk.LabelFrame(main_frame, text="已选择文件")
         file_frame.grid(row=2, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -100,7 +111,9 @@ class ExifCleanerGUI:
         drag_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E))
         drag_frame.columnconfigure(0, weight=1)
         
-        self.drag_label = ttk.Label(drag_frame, text="将图片或文件夹拖拽到此处", font=('Arial', 12))
+        # 设置统一字体
+        default_font = ('微软雅黑', 12)
+        self.drag_label = ttk.Label(drag_frame, text="将图片或文件夹拖拽到此处", font=default_font)
         self.drag_label.grid(row=0, column=0, pady=20)
         
         # EXIF信息和选项框架
@@ -116,7 +129,9 @@ class ExifCleanerGUI:
         info_frame.columnconfigure(0, weight=1)
         info_frame.rowconfigure(0, weight=1)
         
-        self.exif_info_text = tk.Text(info_frame, width=40, height=15, wrap=tk.WORD)
+        # 设置统一字体
+        default_font = ('微软雅黑', 10)
+        self.exif_info_text = tk.Text(info_frame, width=40, height=15, wrap=tk.WORD, font=default_font)
         self.exif_info_scrollbar = ttk.Scrollbar(info_frame, orient=tk.VERTICAL, command=self.exif_info_text.yview)
         self.exif_info_text.configure(yscrollcommand=self.exif_info_scrollbar.set)
         
@@ -137,7 +152,9 @@ class ExifCleanerGUI:
         deselect_all_btn.pack(side=tk.LEFT, padx=5, pady=5)
         
         # 标签列表
-        self.tags_listbox = tk.Listbox(options_frame, selectmode=tk.MULTIPLE, width=40, height=10)
+        # 设置统一字体
+        default_font = ('微软雅黑', 10)
+        self.tags_listbox = tk.Listbox(options_frame, selectmode=tk.MULTIPLE, width=40, height=10, font=default_font)
         self.tags_scrollbar = ttk.Scrollbar(options_frame, orient=tk.VERTICAL, command=self.tags_listbox.yview)
         self.tags_listbox.configure(yscrollcommand=self.tags_scrollbar.set)
         
@@ -158,17 +175,6 @@ class ExifCleanerGUI:
         self.status_var.set("就绪")
         status_bar = ttk.Label(main_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E))
-    
-    def _setup_drag_and_drop(self):
-        """设置拖拽功能"""
-        # 在Windows系统上，tkinter的拖拽支持有限，暂时不支持拖拽功能
-        pass
-    
-    def _on_drop(self, event):
-        """拖拽放下事件"""
-        self.drag_label.config(text="Drag images or folders here", foreground="black")
-        # 在Windows系统上，tkinter的拖拽支持有限，暂时移除拖拽功能
-        pass
     
     def _select_files(self):
         """选择文件"""
@@ -216,7 +222,6 @@ class ExifCleanerGUI:
         
         # 在后台线程中处理
         def process_files():
-            # 优化：添加进度回调，实时更新进度条
             def update_progress(progress):
                 self.progress_var.set(progress)
                 self.status_var.set(f"正在处理... {int(progress)}%")
@@ -251,7 +256,6 @@ class ExifCleanerGUI:
         
         # 在后台线程中处理
         def process_files():
-            # 优化：添加进度回调，实时更新进度条
             def update_progress(progress):
                 self.progress_var.set(progress)
                 self.status_var.set(f"正在处理... {int(progress)}%")

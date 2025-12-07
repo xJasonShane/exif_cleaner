@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import os
-import tkinter as tk
 from tkinter import filedialog
 from pathlib import Path
 
@@ -68,27 +69,6 @@ class FileHandler:
         """检查文件是否为支持的图片格式"""
         ext = Path(file_name).suffix.lower()
         return ext in self.supported_formats
-    
-    def process_dropped_files(self, event, recursive=True):
-        """处理拖拽的文件或文件夹"""
-        dropped_files = []
-        
-        # 获取拖拽的文件路径
-        paths = event.data.split()
-        
-        for path in paths:
-            # 清理路径中的引号
-            path = path.strip('"')
-            
-            if os.path.isfile(path):
-                if self._is_supported_image(path):
-                    dropped_files.append(path)
-            elif os.path.isdir(path):
-                # 处理文件夹中的图片
-                folder_images = self.get_image_files(path, recursive=recursive)
-                dropped_files.extend(folder_images)
-        
-        return dropped_files
     
     def validate_file_path(self, file_path):
         """验证文件路径是否有效"""

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 # 测试脚本，用于验证EXIF处理功能
 
 from src.exif_processor import ExifProcessor
