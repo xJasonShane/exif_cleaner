@@ -126,34 +126,6 @@ clear_exif/
 
 详细的更新日志请查看`logs/update_log.md`文件。
 
-## 贡献指南
-
-欢迎提交Issue和Pull Request来帮助改进这个项目！
-
-### 提交Issue
-
-- 描述问题清晰详细
-- 提供复现步骤
-- 提供相关截图（如果适用）
-
-### 提交Pull Request
-
-- 确保代码风格一致
-- 提供详细的更改说明
-- 确保所有功能正常工作
-- 测试新功能
-
-## 许可证
-
-本项目采用MIT许可证，详见`LICENSE`文件。
-
-## 联系方式
-
-如有问题或建议，欢迎通过以下方式联系：
-
-- GitHub Issues：https://github.com/username/clear_exif/issues
-- 电子邮件：your.email@example.com
-
 ---
 
 **EXIF Cleaner** - 让您的图片更隐私，更安全！
