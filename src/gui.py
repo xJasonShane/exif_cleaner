@@ -3,6 +3,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
+import os
+import shutil
 from .file_handler import FileHandler
 from .exif_processor import ExifProcessor
 from .update_checker import UpdateChecker
@@ -140,7 +142,7 @@ class ExifCleanerGUI:
         self.clear_list_btn.pack(side=tk.LEFT, padx=5)
         
         # 删除EXIF按钮
-        self.remove_exif_btn = ttk.Button(button_frame, text="删除全部EXIF", command=self._remove_all_exif)
+        self.remove_exif_btn = ttk.Button(button_frame, text="创建副本清理", command=self._show_delete_confirm)
         self.remove_exif_btn.pack(side=tk.RIGHT, padx=5)
         
         # 检查更新按钮
@@ -445,6 +447,230 @@ class ExifCleanerGUI:
             self.root.after(0, update_ui)
         
         threading.Thread(target=check, daemon=True).start()
+    
+    def _show_delete_confirm(self):
+        """显示删除确认对话框，包含副本选项"""
+        if not self.selected_files:
+            messagebox.showwarning("警告", "未选择文件")
+            return
+        
+        # 创建对话框窗口
+        dialog = tk.Toplevel(self.root)
+        dialog.title("删除确认")
+        dialog.geometry("400x250")
+        dialog.transient(self.root)
+        dialog.grab_set()  # 模态窗口
+        
+        # 设置窗口居中
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() - dialog.winfo_width()) // 2
+        y = (dialog.winfo_screenheight() - dialog.winfo_height()) // 2
+        dialog.geometry(f"400x250+{x}+{y}")
+        
+        # 创建框架和控件
+        frame = ttk.Frame(dialog, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 添加标题
+        title = ttk.Label(frame, text="删除确认", font=self.fonts['bold'])
+        title.pack(pady=10)
+        
+        # 添加提示文本
+        ttk.Label(frame, text=f"确定要删除 {len(self.selected_files)} 个文件的EXIF信息吗？").pack(anchor=tk.W, pady=5)
+        
+        # 添加副本选项
+        self.create_copy_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(frame, text="创建副本后处理", variable=self.create_copy_var).pack(anchor=tk.W, pady=5)
+        
+        # 添加按钮框架
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X, pady=20)
+        
+        # 添加确认和取消按钮
+        ttk.Button(button_frame, text="确认", command=lambda: self._handle_delete_confirm(dialog)).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+    
+    def _handle_delete_confirm(self, dialog):
+        """处理删除确认对话框的用户选择"""
+        create_copy = self.create_copy_var.get()
+        dialog.destroy()
+        
+        if create_copy:
+            # 创建副本后处理
+            self._show_copy_dialog()
+        else:
+            # 直接处理源文件
+            self._remove_all_exif()
+    
+    def _show_copy_dialog(self):
+        """显示副本保存对话框"""
+        if not self.selected_files:
+            messagebox.showwarning("警告", "未选择文件")
+            return
+        
+        # 根据文件数量选择不同的保存方式
+        if len(self.selected_files) == 1:
+            # 单个文件，使用文件保存对话框
+            self._save_single_copy_with_suffix()
+        else:
+            # 多个文件，使用文件夹选择对话框
+            self._save_multiple_copies_with_suffix()
+    
+    def _save_single_copy_with_suffix(self):
+        """保存单个文件的副本，自动添加_副本后缀"""
+        file_path = self.selected_files[0]
+        file_dir = os.path.dirname(file_path)
+        
+        # 打开文件夹选择对话框
+        save_dir = filedialog.askdirectory(
+            initialdir=file_dir,
+            title="选择保存文件夹"
+        )
+        
+        if not save_dir:
+            # 用户取消保存
+            return
+        
+        # 生成带_副本后缀的文件名
+        file_name = os.path.basename(file_path)
+        name, ext = os.path.splitext(file_name)
+        copy_name = f"{name}_副本{ext}"
+        save_path = os.path.join(save_dir, copy_name)
+        
+        # 复制文件
+        try:
+            shutil.copy2(file_path, save_path)
+            messagebox.showinfo("成功", f"副本已保存到: {save_path}")
+            
+            # 替换选中的文件为副本文件
+            self._replace_with_copy(file_path, save_path)
+            
+            # 处理副本文件的EXIF
+            self._remove_all_exif()
+        except Exception as e:
+            messagebox.showerror("错误", f"副本保存失败: {str(e)}")
+    
+    def _save_multiple_copies_with_suffix(self):
+        """保存多个文件的副本，自动添加_副本后缀，带进度指示"""
+        # 打开文件夹选择对话框
+        save_dir = filedialog.askdirectory(
+            initialdir=os.path.dirname(self.selected_files[0]),
+            title="选择保存文件夹"
+        )
+        
+        if not save_dir:
+            # 用户取消保存
+            return
+        
+        # 创建进度对话框
+        progress_dialog = tk.Toplevel(self.root)
+        progress_dialog.title("复制进度")
+        progress_dialog.geometry("400x150")
+        progress_dialog.transient(self.root)
+        progress_dialog.grab_set()  # 模态窗口
+        
+        # 设置窗口居中
+        progress_dialog.update_idletasks()
+        x = (progress_dialog.winfo_screenwidth() - progress_dialog.winfo_width()) // 2
+        y = (progress_dialog.winfo_screenheight() - progress_dialog.winfo_height()) // 2
+        progress_dialog.geometry(f"400x150+{x}+{y}")
+        
+        # 创建框架和控件
+        frame = ttk.Frame(progress_dialog, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 添加进度条
+        progress_var = tk.DoubleVar()
+        progress_bar = ttk.Progressbar(frame, variable=progress_var, maximum=100)
+        progress_bar.pack(fill=tk.X, pady=10)
+        
+        # 添加进度文本
+        progress_text = ttk.Label(frame, text="准备复制...")
+        progress_text.pack(pady=5)
+        
+        # 添加取消按钮
+        cancel_var = tk.BooleanVar(value=False)
+        ttk.Button(frame, text="取消", command=lambda: cancel_var.set(True)).pack(pady=10)
+        
+        # 复制所有文件
+        success_count = 0
+        error_count = 0
+        error_messages = []
+        total_files = len(self.selected_files)
+        copied_files = []  # 存储复制后的文件路径
+        
+        # 更新进度函数
+        def update_progress(current, total, file_name):
+            progress = (current / total) * 100
+            progress_var.set(progress)
+            progress_text.configure(text=f"正在复制: {file_name} ({current}/{total})")
+            progress_dialog.update()
+        
+        # 复制文件
+        for i, file_path in enumerate(self.selected_files):
+            # 检查是否取消
+            if cancel_var.get():
+                error_messages.append("用户取消了复制操作")
+                break
+            
+            try:
+                file_name = os.path.basename(file_path)
+                name, ext = os.path.splitext(file_name)
+                copy_name = f"{name}_副本{ext}"
+                save_path = os.path.join(save_dir, copy_name)
+                
+                # 更新进度
+                update_progress(i + 1, total_files, file_name)
+                
+                # 复制文件
+                shutil.copy2(file_path, save_path)
+                copied_files.append((file_path, save_path))
+                success_count += 1
+            except Exception as e:
+                error_count += 1
+                error_messages.append(f"{os.path.basename(file_path)}: {str(e)}")
+        
+        # 关闭进度对话框
+        progress_dialog.destroy()
+        
+        # 显示保存结果
+        if success_count > 0:
+            result_message = f"成功保存 {success_count} 个副本"
+            if error_count > 0:
+                result_message += f"，失败 {error_count} 个副本"
+                # 显示详细错误信息
+                messagebox.showwarning("保存结果", f"{result_message}\n\n详细错误:\n" + "\n".join(error_messages))
+            else:
+                messagebox.showinfo("保存成功", result_message)
+            
+            # 替换选中的文件为副本文件
+            for file_path, save_path in copied_files:
+                self._replace_with_copy(file_path, save_path)
+            
+            # 处理副本文件的EXIF
+            self._remove_all_exif()
+        elif cancel_var.get():
+            messagebox.showinfo("提示", "复制操作已取消")
+        else:
+            messagebox.showerror("保存失败", f"所有文件保存失败\n\n详细错误:\n" + "\n".join(error_messages))
+    
+    def _replace_with_copy(self, original_path, copy_path):
+        """将选中的文件替换为副本文件"""
+        # 找到原始文件在列表中的索引
+        if original_path in self.selected_files:
+            index = self.selected_files.index(original_path)
+            # 替换列表中的文件路径
+            self.selected_files[index] = copy_path
+        
+        # 更新文件树中的显示
+        for item in self.file_tree.get_children():
+            values = self.file_tree.item(item, 'values')
+            if values[2] == original_path:
+                # 获取副本文件信息
+                copy_info = self.file_handler.get_file_info(copy_path)
+                # 更新文件树
+                self.file_tree.item(item, values=(copy_info['name'], copy_info['size'], copy_path))
+                break
     
     def _show_update_message(self, update_info):
         """显示更新消息"""
