@@ -3,6 +3,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
+import os
+import shutil
 from .file_handler import FileHandler
 from .exif_processor import ExifProcessor
 from .update_checker import UpdateChecker
@@ -13,7 +15,21 @@ class ExifCleanerGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.geometry("800x600")
+        
+        # 设置窗口大小
+        window_width = 1280
+        window_height = 800
+        
+        # 获取屏幕尺寸
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        
+        # 计算居中位置
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        
+        # 设置窗口位置和大小
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.root.resizable(True, True)
         
         # 初始化组件
@@ -21,6 +37,16 @@ class ExifCleanerGUI:
         self.exif_processor = ExifProcessor()
         self.update_checker = UpdateChecker()
         self.version_manager = VersionManager()
+        
+        # 字体管理 - 统一变量，方便后续一键切换
+        self.fonts = {
+            'family': '微软雅黑',
+            'default': ('微软雅黑', 10),
+            'title': ('微软雅黑', 16, 'bold'),
+            'large': ('微软雅黑', 12),
+            'small': ('微软雅黑', 8),
+            'bold': ('微软雅黑', 10, 'bold')
+        }
         
         # 设置标题
         app_name = self.version_manager.get_app_name()
@@ -30,20 +56,45 @@ class ExifCleanerGUI:
         self.selected_files = []
         self.exif_tags_to_remove = []
         
+        # EXIF标签相关
+        self.all_exif_tags = self._get_all_exif_tags()  # 所有可能的EXIF标签
+        self.exif_checkboxes = {}  # 存储所有EXIF标签的复选框
+        self.current_image_exif = {}  # 当前选中图片的EXIF信息
+        
         # 创建UI
         self._create_widgets()
     
     def _create_widgets(self):
         """创建UI组件"""
-        # 设置统一字体
-        default_font = ('微软雅黑', 10)
-        
         # 为所有ttk组件设置统一字体
         style = ttk.Style()
-        style.configure('.', font=default_font)
+        
+        # 尝试使用系统可用的字体，确保兼容性
+        try:
+            # 对于中文系统，优先使用微软雅黑
+            style.configure('.', font=self.fonts['default'])
+            
+            # 标题样式
+            style.configure('Title.TLabel', font=self.fonts['title'])
+            
+            # 大号字体样式
+            style.configure('Large.TLabel', font=self.fonts['large'])
+            
+            # 小号字体样式
+            style.configure('Small.TLabel', font=self.fonts['small'])
+            
+            # 粗体样式
+            style.configure('Bold.TLabel', font=self.fonts['bold'])
+        except Exception as e:
+            # 如果字体设置失败，使用系统默认字体
+            print(f"字体设置失败: {e}")
+            style.configure('.', font=('Helvetica', 10))
+            style.configure('Title.TLabel', font=('Helvetica', 16, 'bold'))
+            style.configure('Large.TLabel', font=('Helvetica', 12))
+            style.configure('Small.TLabel', font=('Helvetica', 8))
+            style.configure('Bold.TLabel', font=('Helvetica', 10, 'bold'))
         
         # 添加强调按钮样式
-        style = ttk.Style()
         style.configure('Accent.TButton', foreground='#000000', background='#0078d4')
         style.map('Accent.TButton', 
                   foreground=[('pressed', '#ffffff'), ('active', '#ffffff')],
@@ -65,13 +116,13 @@ class ExifCleanerGUI:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(2, weight=1)
+        main_frame.rowconfigure(3, weight=1)  # 已选择文件区域现在在row=3
         main_frame.rowconfigure(4, weight=1)
         
         # 标题
         app_name = self.version_manager.get_app_name()
         version = self.version_manager.get_current_version()
-        title_label = ttk.Label(main_frame, text=f"{app_name} v{version}", font=('Arial', 16, 'bold'))
+        title_label = ttk.Label(main_frame, text=f"{app_name} v{version}", style='Title.TLabel')
         title_label.grid(row=0, column=0, columnspan=3, pady=10)
         
         # 操作按钮框架
@@ -91,7 +142,7 @@ class ExifCleanerGUI:
         self.clear_list_btn.pack(side=tk.LEFT, padx=5)
         
         # 删除EXIF按钮
-        self.remove_exif_btn = ttk.Button(button_frame, text="删除全部EXIF", command=self._remove_all_exif)
+        self.remove_exif_btn = ttk.Button(button_frame, text="创建副本清理", command=self._show_delete_confirm)
         self.remove_exif_btn.pack(side=tk.RIGHT, padx=5)
         
         # 检查更新按钮
@@ -102,9 +153,17 @@ class ExifCleanerGUI:
         self.about_btn = ttk.Button(button_frame, text="关于", command=self._show_about_dialog)
         self.about_btn.pack(side=tk.RIGHT, padx=5)
         
+        # 拖拽提示
+        drag_frame = ttk.LabelFrame(main_frame, text="拖拽区域")
+        drag_frame.grid(row=2, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E))
+        drag_frame.columnconfigure(0, weight=1)
+        
+        self.drag_label = ttk.Label(drag_frame, text="将图片或文件夹拖拽到此处", style='Large.TLabel')
+        self.drag_label.grid(row=0, column=0, pady=20)
+        
         # 文件列表框架
         file_frame = ttk.LabelFrame(main_frame, text="已选择文件")
-        file_frame.grid(row=2, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
+        file_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
         file_frame.columnconfigure(0, weight=1)
         file_frame.rowconfigure(0, weight=1)
         
@@ -125,15 +184,8 @@ class ExifCleanerGUI:
         self.file_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         file_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
-        # 拖拽提示
-        drag_frame = ttk.LabelFrame(main_frame, text="拖拽区域")
-        drag_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E))
-        drag_frame.columnconfigure(0, weight=1)
-        
-        # 设置统一字体
-        default_font = ('微软雅黑', 12)
-        self.drag_label = ttk.Label(drag_frame, text="将图片或文件夹拖拽到此处", font=default_font)
-        self.drag_label.grid(row=0, column=0, pady=20)
+        # 添加文件选择事件监听器
+        self.file_tree.bind('<<TreeviewSelect>>', self._on_file_select)
         
         # EXIF信息和选项框架
         exif_frame = ttk.LabelFrame(main_frame, text="EXIF选项")
@@ -142,43 +194,42 @@ class ExifCleanerGUI:
         exif_frame.columnconfigure(1, weight=1)
         exif_frame.rowconfigure(0, weight=1)
         
-        # 左半部分：EXIF信息预览
-        info_frame = ttk.LabelFrame(exif_frame, text="EXIF信息预览")
+        # 左半部分：EXIF信息列表（复选框）
+        info_frame = ttk.LabelFrame(exif_frame, text="EXIF信息列表")
         info_frame.grid(row=0, column=0, pady=5, padx=5, sticky=(tk.W, tk.E, tk.N, tk.S))
         info_frame.columnconfigure(0, weight=1)
-        info_frame.rowconfigure(0, weight=1)
         
-        # 设置统一字体
-        default_font = ('微软雅黑', 10)
-        self.exif_info_text = tk.Text(info_frame, width=40, height=15, wrap=tk.WORD, font=default_font)
-        self.exif_info_scrollbar = ttk.Scrollbar(info_frame, orient=tk.VERTICAL, command=self.exif_info_text.yview)
-        self.exif_info_text.configure(yscrollcommand=self.exif_info_scrollbar.set)
+        # 创建内部框架放置复选框
+        self.checkbox_inner_frame = ttk.Frame(info_frame)
+        self.checkbox_inner_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        self.exif_info_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.exif_info_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        # 创建复选框
+        self.exif_var_dict = {}
+        self.create_exif_checkboxes()
         
-        # 右半部分：选择性删除选项
-        options_frame = ttk.LabelFrame(exif_frame, text="选择性删除")
+        # 右半部分：操作按钮和说明
+        options_frame = ttk.LabelFrame(exif_frame, text="操作选项")
         options_frame.grid(row=0, column=1, pady=5, padx=5, sticky=(tk.W, tk.E, tk.N, tk.S))
         options_frame.columnconfigure(0, weight=1)
         options_frame.rowconfigure(1, weight=1)
         
         # 全选/取消全选按钮
-        select_all_btn = ttk.Button(options_frame, text="全选", command=self._select_all_tags)
-        select_all_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        button_row = ttk.Frame(options_frame)
+        button_row.pack(fill=tk.X, padx=5, pady=5)
         
-        deselect_all_btn = ttk.Button(options_frame, text="取消全选", command=self._deselect_all_tags)
-        deselect_all_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        select_all_btn = ttk.Button(button_row, text="全选", command=self._select_all_tags)
+        select_all_btn.pack(side=tk.LEFT, padx=5)
         
-        # 标签列表
-        # 设置统一字体
-        default_font = ('微软雅黑', 10)
-        self.tags_listbox = tk.Listbox(options_frame, selectmode=tk.MULTIPLE, width=40, height=10, font=default_font)
-        self.tags_scrollbar = ttk.Scrollbar(options_frame, orient=tk.VERTICAL, command=self.tags_listbox.yview)
-        self.tags_listbox.configure(yscrollcommand=self.tags_scrollbar.set)
+        deselect_all_btn = ttk.Button(button_row, text="取消全选", command=self._deselect_all_tags)
+        deselect_all_btn.pack(side=tk.LEFT, padx=5)
         
-        self.tags_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.tags_scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
+        # 当前选中图片信息
+        info_text = ttk.Label(options_frame, text="说明:", style='Bold.TLabel')
+        info_text.pack(anchor=tk.W, padx=5, pady=5)
+        
+        info_content = ttk.Label(options_frame, text="1. 勾选需要清除的EXIF信息\n2. 未勾选的EXIF信息将被保留\n3. 图片中不存在的EXIF信息会显示为未勾选\n4. 选择图片后会高亮显示该图片包含的EXIF信息", 
+                                wraplength=300, justify=tk.LEFT)
+        info_content.pack(anchor=tk.W, padx=5, pady=5)
         
         # 删除所选标签按钮
         remove_selected_btn = ttk.Button(options_frame, text="删除所选EXIF", command=self._remove_selected_exif)
@@ -215,6 +266,25 @@ class ExifCleanerGUI:
                 file_info = self.file_handler.get_file_info(file_path)
                 self.file_tree.insert('', tk.END, values=(file_info['name'], file_info['size'], file_path))
         self.status_var.set(f"已选择 {len(self.selected_files)} 个文件")
+        
+        # 如果只有一个文件被选择，更新EXIF信息和复选框状态
+        if len(self.selected_files) == 1:
+            self._update_exif_info(self.selected_files[0])
+    
+    def _update_exif_info(self, file_path):
+        """更新EXIF信息和复选框状态"""
+        # 获取当前文件的EXIF信息
+        self.current_image_exif = self.exif_processor.get_exif_info(file_path)
+        
+        # 重置所有复选框样式
+        for tag_name in self.exif_checkboxes:
+            self.exif_checkboxes[tag_name].configure(style='')
+        
+        # 高亮显示当前文件包含的EXIF标签
+        for tag_name in self.current_image_exif:
+            if tag_name in self.exif_checkboxes:
+                # 可以添加高亮样式，这里简单地使用加粗
+                self.exif_checkboxes[tag_name].configure(style='Bold.TCheckbutton')
     
     def _clear_list(self):
         """清空文件列表"""
@@ -222,8 +292,15 @@ class ExifCleanerGUI:
         for item in self.file_tree.get_children():
             self.file_tree.delete(item)
         self.status_var.set("就绪")
-        self.exif_info_text.delete(1.0, tk.END)
-        self.tags_listbox.delete(0, tk.END)
+        self.current_image_exif = {}
+        
+        # 重置所有复选框状态
+        for tag_name in self.exif_var_dict:
+            self.exif_var_dict[tag_name].set(False)
+        
+        # 重置所有复选框样式
+        for tag_name in self.exif_checkboxes:
+            self.exif_checkboxes[tag_name].configure(style='')
     
     def _remove_all_exif(self):
         """删除所有EXIF信息"""
@@ -260,7 +337,12 @@ class ExifCleanerGUI:
             messagebox.showwarning("警告", "未选择文件")
             return
         
-        selected_tags = [self.tags_listbox.get(i) for i in self.tags_listbox.curselection()]
+        # 获取所有被勾选的EXIF标签
+        selected_tags = []
+        for tag_name, var in self.exif_var_dict.items():
+            if var.get():
+                selected_tags.append(tag_name)
+        
         if not selected_tags:
             messagebox.showwarning("警告", "未选择EXIF标签")
             return
@@ -321,11 +403,27 @@ class ExifCleanerGUI:
     
     def _select_all_tags(self):
         """全选EXIF标签"""
-        self.tags_listbox.select_set(0, tk.END)
+        for tag_name in self.exif_var_dict:
+            self.exif_var_dict[tag_name].set(True)
     
     def _deselect_all_tags(self):
         """取消全选EXIF标签"""
-        self.tags_listbox.select_clear(0, tk.END)
+        for tag_name in self.exif_var_dict:
+            self.exif_var_dict[tag_name].set(False)
+    
+    def _on_file_select(self, event):
+        """文件选择事件处理"""
+        # 获取选中的文件
+        selected_items = self.file_tree.selection()
+        if not selected_items:
+            return
+        
+        # 只处理第一个选中的文件
+        item = selected_items[0]
+        file_path = self.file_tree.item(item, 'values')[2]
+        
+        # 更新EXIF信息和复选框状态
+        self._update_exif_info(file_path)
     
     def _check_updates(self):
         """检查更新"""
@@ -349,6 +447,230 @@ class ExifCleanerGUI:
             self.root.after(0, update_ui)
         
         threading.Thread(target=check, daemon=True).start()
+    
+    def _show_delete_confirm(self):
+        """显示删除确认对话框，包含副本选项"""
+        if not self.selected_files:
+            messagebox.showwarning("警告", "未选择文件")
+            return
+        
+        # 创建对话框窗口
+        dialog = tk.Toplevel(self.root)
+        dialog.title("删除确认")
+        dialog.geometry("400x250")
+        dialog.transient(self.root)
+        dialog.grab_set()  # 模态窗口
+        
+        # 设置窗口居中
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() - dialog.winfo_width()) // 2
+        y = (dialog.winfo_screenheight() - dialog.winfo_height()) // 2
+        dialog.geometry(f"400x250+{x}+{y}")
+        
+        # 创建框架和控件
+        frame = ttk.Frame(dialog, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 添加标题
+        title = ttk.Label(frame, text="删除确认", font=self.fonts['bold'])
+        title.pack(pady=10)
+        
+        # 添加提示文本
+        ttk.Label(frame, text=f"确定要删除 {len(self.selected_files)} 个文件的EXIF信息吗？").pack(anchor=tk.W, pady=5)
+        
+        # 添加副本选项
+        self.create_copy_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(frame, text="创建副本后处理", variable=self.create_copy_var).pack(anchor=tk.W, pady=5)
+        
+        # 添加按钮框架
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X, pady=20)
+        
+        # 添加确认和取消按钮
+        ttk.Button(button_frame, text="确认", command=lambda: self._handle_delete_confirm(dialog)).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+    
+    def _handle_delete_confirm(self, dialog):
+        """处理删除确认对话框的用户选择"""
+        create_copy = self.create_copy_var.get()
+        dialog.destroy()
+        
+        if create_copy:
+            # 创建副本后处理
+            self._show_copy_dialog()
+        else:
+            # 直接处理源文件
+            self._remove_all_exif()
+    
+    def _show_copy_dialog(self):
+        """显示副本保存对话框"""
+        if not self.selected_files:
+            messagebox.showwarning("警告", "未选择文件")
+            return
+        
+        # 根据文件数量选择不同的保存方式
+        if len(self.selected_files) == 1:
+            # 单个文件，使用文件保存对话框
+            self._save_single_copy_with_suffix()
+        else:
+            # 多个文件，使用文件夹选择对话框
+            self._save_multiple_copies_with_suffix()
+    
+    def _save_single_copy_with_suffix(self):
+        """保存单个文件的副本，自动添加_副本后缀"""
+        file_path = self.selected_files[0]
+        file_dir = os.path.dirname(file_path)
+        
+        # 打开文件夹选择对话框
+        save_dir = filedialog.askdirectory(
+            initialdir=file_dir,
+            title="选择保存文件夹"
+        )
+        
+        if not save_dir:
+            # 用户取消保存
+            return
+        
+        # 生成带_副本后缀的文件名
+        file_name = os.path.basename(file_path)
+        name, ext = os.path.splitext(file_name)
+        copy_name = f"{name}_副本{ext}"
+        save_path = os.path.join(save_dir, copy_name)
+        
+        # 复制文件
+        try:
+            shutil.copy2(file_path, save_path)
+            messagebox.showinfo("成功", f"副本已保存到: {save_path}")
+            
+            # 替换选中的文件为副本文件
+            self._replace_with_copy(file_path, save_path)
+            
+            # 处理副本文件的EXIF
+            self._remove_all_exif()
+        except Exception as e:
+            messagebox.showerror("错误", f"副本保存失败: {str(e)}")
+    
+    def _save_multiple_copies_with_suffix(self):
+        """保存多个文件的副本，自动添加_副本后缀，带进度指示"""
+        # 打开文件夹选择对话框
+        save_dir = filedialog.askdirectory(
+            initialdir=os.path.dirname(self.selected_files[0]),
+            title="选择保存文件夹"
+        )
+        
+        if not save_dir:
+            # 用户取消保存
+            return
+        
+        # 创建进度对话框
+        progress_dialog = tk.Toplevel(self.root)
+        progress_dialog.title("复制进度")
+        progress_dialog.geometry("400x150")
+        progress_dialog.transient(self.root)
+        progress_dialog.grab_set()  # 模态窗口
+        
+        # 设置窗口居中
+        progress_dialog.update_idletasks()
+        x = (progress_dialog.winfo_screenwidth() - progress_dialog.winfo_width()) // 2
+        y = (progress_dialog.winfo_screenheight() - progress_dialog.winfo_height()) // 2
+        progress_dialog.geometry(f"400x150+{x}+{y}")
+        
+        # 创建框架和控件
+        frame = ttk.Frame(progress_dialog, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 添加进度条
+        progress_var = tk.DoubleVar()
+        progress_bar = ttk.Progressbar(frame, variable=progress_var, maximum=100)
+        progress_bar.pack(fill=tk.X, pady=10)
+        
+        # 添加进度文本
+        progress_text = ttk.Label(frame, text="准备复制...")
+        progress_text.pack(pady=5)
+        
+        # 添加取消按钮
+        cancel_var = tk.BooleanVar(value=False)
+        ttk.Button(frame, text="取消", command=lambda: cancel_var.set(True)).pack(pady=10)
+        
+        # 复制所有文件
+        success_count = 0
+        error_count = 0
+        error_messages = []
+        total_files = len(self.selected_files)
+        copied_files = []  # 存储复制后的文件路径
+        
+        # 更新进度函数
+        def update_progress(current, total, file_name):
+            progress = (current / total) * 100
+            progress_var.set(progress)
+            progress_text.configure(text=f"正在复制: {file_name} ({current}/{total})")
+            progress_dialog.update()
+        
+        # 复制文件
+        for i, file_path in enumerate(self.selected_files):
+            # 检查是否取消
+            if cancel_var.get():
+                error_messages.append("用户取消了复制操作")
+                break
+            
+            try:
+                file_name = os.path.basename(file_path)
+                name, ext = os.path.splitext(file_name)
+                copy_name = f"{name}_副本{ext}"
+                save_path = os.path.join(save_dir, copy_name)
+                
+                # 更新进度
+                update_progress(i + 1, total_files, file_name)
+                
+                # 复制文件
+                shutil.copy2(file_path, save_path)
+                copied_files.append((file_path, save_path))
+                success_count += 1
+            except Exception as e:
+                error_count += 1
+                error_messages.append(f"{os.path.basename(file_path)}: {str(e)}")
+        
+        # 关闭进度对话框
+        progress_dialog.destroy()
+        
+        # 显示保存结果
+        if success_count > 0:
+            result_message = f"成功保存 {success_count} 个副本"
+            if error_count > 0:
+                result_message += f"，失败 {error_count} 个副本"
+                # 显示详细错误信息
+                messagebox.showwarning("保存结果", f"{result_message}\n\n详细错误:\n" + "\n".join(error_messages))
+            else:
+                messagebox.showinfo("保存成功", result_message)
+            
+            # 替换选中的文件为副本文件
+            for file_path, save_path in copied_files:
+                self._replace_with_copy(file_path, save_path)
+            
+            # 处理副本文件的EXIF
+            self._remove_all_exif()
+        elif cancel_var.get():
+            messagebox.showinfo("提示", "复制操作已取消")
+        else:
+            messagebox.showerror("保存失败", f"所有文件保存失败\n\n详细错误:\n" + "\n".join(error_messages))
+    
+    def _replace_with_copy(self, original_path, copy_path):
+        """将选中的文件替换为副本文件"""
+        # 找到原始文件在列表中的索引
+        if original_path in self.selected_files:
+            index = self.selected_files.index(original_path)
+            # 替换列表中的文件路径
+            self.selected_files[index] = copy_path
+        
+        # 更新文件树中的显示
+        for item in self.file_tree.get_children():
+            values = self.file_tree.item(item, 'values')
+            if values[2] == original_path:
+                # 获取副本文件信息
+                copy_info = self.file_handler.get_file_info(copy_path)
+                # 更新文件树
+                self.file_tree.item(item, values=(copy_info['name'], copy_info['size'], copy_path))
+                break
     
     def _show_update_message(self, update_info):
         """显示更新消息"""
@@ -386,10 +708,10 @@ class ExifCleanerGUI:
         title_frame = ttk.Frame(main_frame)
         title_frame.pack(pady=(0, 15))
         
-        title_label = ttk.Label(title_frame, text=app_name, font=('微软雅黑', 18, 'bold'))
+        title_label = ttk.Label(title_frame, text=app_name, style='Title.TLabel')
         title_label.pack()
         
-        version_label = ttk.Label(title_frame, text=f"版本 {version}", font=('微软雅黑', 10))
+        version_label = ttk.Label(title_frame, text=f"版本 {version}")
         version_label.pack(pady=(5, 0))
         
         # 分割线
@@ -403,7 +725,6 @@ class ExifCleanerGUI:
         desc_label = ttk.Label(
             desc_frame,
             text="一个用于批量删除图片EXIF信息的工具，支持多种图片格式，提供简洁直观的GUI界面。",
-            font=('微软雅黑', 10),
             wraplength=450,
             justify=tk.CENTER
         )
@@ -418,26 +739,26 @@ class ExifCleanerGUI:
         info_frame.columnconfigure(1, weight=2)
         
         # 作者信息
-        author_label = ttk.Label(info_frame, text="作者:", font=('微软雅黑', 10, 'bold'))
-        author_value = ttk.Label(info_frame, text="JasonShane", font=('微软雅黑', 10))
+        author_label = ttk.Label(info_frame, text="作者:", style='Bold.TLabel')
+        author_value = ttk.Label(info_frame, text="JasonShane")
         author_label.grid(row=0, column=0, sticky=tk.E, padx=5, pady=5)
         author_value.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
         
         # 开源协议
-        license_label = ttk.Label(info_frame, text="开源协议:", font=('微软雅黑', 10, 'bold'))
-        license_value = ttk.Label(info_frame, text="MIT License", font=('微软雅黑', 10))
+        license_label = ttk.Label(info_frame, text="开源协议:", style='Bold.TLabel')
+        license_value = ttk.Label(info_frame, text="MIT License")
         license_label.grid(row=1, column=0, sticky=tk.E, padx=5, pady=5)
         license_value.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
         
         # 支持格式
-        format_label = ttk.Label(info_frame, text="支持格式:", font=('微软雅黑', 10, 'bold'))
-        format_value = ttk.Label(info_frame, text="JPG, JPEG, PNG, WEBP", font=('微软雅黑', 10))
+        format_label = ttk.Label(info_frame, text="支持格式:", style='Bold.TLabel')
+        format_value = ttk.Label(info_frame, text="JPG, JPEG, PNG, WEBP")
         format_label.grid(row=2, column=0, sticky=tk.E, padx=5, pady=5)
         format_value.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
         
         # 技术栈
-        tech_label = ttk.Label(info_frame, text="技术栈:", font=('微软雅黑', 10, 'bold'))
-        tech_value = ttk.Label(info_frame, text="Python, tkinter, piexif, Pillow", font=('微软雅黑', 10))
+        tech_label = ttk.Label(info_frame, text="技术栈:", style='Bold.TLabel')
+        tech_value = ttk.Label(info_frame, text="Python, tkinter, piexif, Pillow")
         tech_label.grid(row=3, column=0, sticky=tk.E, padx=5, pady=5)
         tech_value.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
         
@@ -472,7 +793,7 @@ class ExifCleanerGUI:
         copyright_label = ttk.Label(
             main_frame,
             text="© 2024 JasonShane. All rights reserved.",
-            font=('微软雅黑', 8)
+            style='Small.TLabel'
         )
         copyright_label.pack(side=tk.BOTTOM, pady=10)
     
@@ -484,6 +805,89 @@ class ExifCleanerGUI:
             webbrowser.open(repo_url)
         else:
             messagebox.showinfo("提示", "未配置GitHub仓库地址")
+    
+    def create_exif_checkboxes(self):
+        """创建所有EXIF标签的复选框，使用多列显示"""
+        # 清空当前复选框
+        for widget in self.checkbox_inner_frame.winfo_children():
+            widget.destroy()
+        
+        # 清空之前的变量和复选框字典
+        self.exif_var_dict.clear()
+        self.exif_checkboxes.clear()
+        
+        # 配置内部框架的列权重，增加到4列
+        self.checkbox_inner_frame.columnconfigure(0, weight=1)
+        self.checkbox_inner_frame.columnconfigure(1, weight=1)
+        self.checkbox_inner_frame.columnconfigure(2, weight=1)
+        self.checkbox_inner_frame.columnconfigure(3, weight=1)
+        
+        # 设置每行显示的列数，增加到4列
+        columns = 4
+        
+        # 为每个EXIF标签创建复选框，默认全部勾选
+        sorted_tags = sorted(self.all_exif_tags.items())
+        total_tags = len(sorted_tags)
+        
+        for i, (tag_name, tag_cn) in enumerate(sorted_tags):
+            var = tk.BooleanVar()
+            var.set(True)  # 默认全部勾选
+            
+            # 创建复选框，显示中文名称
+            checkbox = ttk.Checkbutton(
+                self.checkbox_inner_frame,
+                text=tag_cn,
+                variable=var,
+                onvalue=True,
+                offvalue=False
+            )
+            
+            # 计算行号和列号
+            row = i // columns
+            col = i % columns
+            
+            # 放置复选框
+            checkbox.grid(row=row, column=col, sticky=tk.W, padx=10, pady=1)  # 调整内边距
+            
+            # 保存变量和复选框，使用英文标签名作为键
+            self.exif_var_dict[tag_name] = var
+            self.exif_checkboxes[tag_name] = checkbox
+    
+    def _get_all_exif_tags(self):
+        """获取精简的可删除EXIF标签，返回中英文对照字典"""
+        # 精简的可删除EXIF信息列表，中英文对照
+        common_exif_tags = {
+            # GPS相关信息（隐私敏感）
+            'GPSLatitude': 'GPS纬度',
+            'GPSLongitude': 'GPS经度',
+            'GPSAltitude': 'GPS海拔',
+            'GPSDateTime': 'GPS日期时间',
+            'GPSDateStamp': 'GPS日期',
+            'GPSTimeStamp': 'GPS时间',
+            
+            # 相机和设备信息
+            'Make': '相机品牌',
+            'Model': '相机型号',
+            'CameraOwnerName': '相机所有者',
+            'BodySerialNumber': '相机序列号',
+            'LensMake': '镜头品牌',
+            'LensModel': '镜头型号',
+            'FirmwareVersion': '固件版本',
+            
+            # 拍摄信息
+            'DateTimeOriginal': '拍摄日期时间',
+            'DateTimeDigitized': '数字化日期时间',
+            
+            # 其他隐私相关信息
+            'Artist': '作者',
+            'Copyright': '版权信息',
+            'ImageDescription': '图像描述',
+            'UserComment': '用户注释',
+            'HostComputer': '拍摄设备',
+            'Software': '处理软件',
+        }
+        
+        return common_exif_tags
     
     def run(self):
         """运行应用"""
