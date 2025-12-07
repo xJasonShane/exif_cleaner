@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import piexif
 from PIL import Image
 import os
@@ -69,20 +71,17 @@ class ExifProcessor:
         
         if ext in ['.jpg', '.jpeg', '.webp']:
             try:
-                # 优化：使用with语句确保图片资源及时释放
                 with Image.open(file_path) as img:
-                    # 优化：直接复制图片而不转换为列表
                     img_without_exif = img.copy()
                     img_without_exif.save(output, format=img.format, quality=100, exif=b'')
-                return True
+                return True, None
             except Exception as e:
                 return False, str(e)
         elif ext == '.png':
             try:
                 with Image.open(file_path) as img:
-                    # 优化：PNG保存时不包含exif
                     img.save(output, format='PNG', exif=None)
-                return True
+                return True, None
             except Exception as e:
                 return False, str(e)
         return False, f"不支持的格式: {ext}"
@@ -94,9 +93,7 @@ class ExifProcessor:
         
         if ext in ['.jpg', '.jpeg', '.webp']:
             try:
-                # 优化：使用with语句确保资源及时释放
                 with Image.open(file_path) as img:
-                    # 优化：只在必要时读取和修改EXIF数据
                     exif_dict = piexif.load(img.info.get('exif') or b'')
                     
                     # 遍历所有IFD（Image File Directory）
@@ -159,7 +156,6 @@ class ExifProcessor:
             
             results.append((file_path, success, error))
             
-            # 优化：添加进度回调，允许GUI实时更新进度
             if progress_callback and total_files > 0:
                 progress = (index + 1) / total_files * 100
                 progress_callback(progress)

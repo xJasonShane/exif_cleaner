@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
-import os
 from .file_handler import FileHandler
 from .exif_processor import ExifProcessor
 from .update_checker import UpdateChecker
@@ -12,7 +13,6 @@ class ExifCleanerGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("EXIF清除工具")
         self.root.geometry("800x600")
         self.root.resizable(True, True)
         
@@ -22,19 +22,41 @@ class ExifCleanerGUI:
         self.update_checker = UpdateChecker()
         self.version_manager = VersionManager()
         
+        # 设置标题
+        app_name = self.version_manager.get_app_name()
+        self.root.title(f"{app_name} - EXIF清除工具")
+        
         # 数据
         self.selected_files = []
         self.exif_tags_to_remove = []
         
         # 创建UI
         self._create_widgets()
-        self._setup_drag_and_drop()
-        
-        # 检查更新
-        self._check_updates()
     
     def _create_widgets(self):
         """创建UI组件"""
+        # 设置统一字体
+        default_font = ('微软雅黑', 10)
+        
+        # 为所有ttk组件设置统一字体
+        style = ttk.Style()
+        style.configure('.', font=default_font)
+        
+        # 添加强调按钮样式
+        style = ttk.Style()
+        style.configure('Accent.TButton', foreground='#000000', background='#0078d4')
+        style.map('Accent.TButton', 
+                  foreground=[('pressed', '#ffffff'), ('active', '#ffffff')],
+                  background=[('pressed', '#005a9e'), ('active', '#106ebe')])
+        
+        # 添加GitHub按钮高亮样式
+        style.configure('Highlight.TButton', foreground='#000000', background='#24292e')
+        style.map('Highlight.TButton',
+                  foreground=[('pressed', '#ffffff'), ('active', '#ffffff')],
+                  background=[('pressed', '#161b22'), ('active', '#30363d')])
+        
+        
+        
         # 创建主框架
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -72,6 +94,14 @@ class ExifCleanerGUI:
         self.remove_exif_btn = ttk.Button(button_frame, text="删除全部EXIF", command=self._remove_all_exif)
         self.remove_exif_btn.pack(side=tk.RIGHT, padx=5)
         
+        # 检查更新按钮
+        self.check_update_btn = ttk.Button(button_frame, text="检查更新", command=self._check_updates)
+        self.check_update_btn.pack(side=tk.RIGHT, padx=5)
+        
+        # 关于按钮
+        self.about_btn = ttk.Button(button_frame, text="关于", command=self._show_about_dialog)
+        self.about_btn.pack(side=tk.RIGHT, padx=5)
+        
         # 文件列表框架
         file_frame = ttk.LabelFrame(main_frame, text="已选择文件")
         file_frame.grid(row=2, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -100,7 +130,9 @@ class ExifCleanerGUI:
         drag_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E))
         drag_frame.columnconfigure(0, weight=1)
         
-        self.drag_label = ttk.Label(drag_frame, text="将图片或文件夹拖拽到此处", font=('Arial', 12))
+        # 设置统一字体
+        default_font = ('微软雅黑', 12)
+        self.drag_label = ttk.Label(drag_frame, text="将图片或文件夹拖拽到此处", font=default_font)
         self.drag_label.grid(row=0, column=0, pady=20)
         
         # EXIF信息和选项框架
@@ -116,7 +148,9 @@ class ExifCleanerGUI:
         info_frame.columnconfigure(0, weight=1)
         info_frame.rowconfigure(0, weight=1)
         
-        self.exif_info_text = tk.Text(info_frame, width=40, height=15, wrap=tk.WORD)
+        # 设置统一字体
+        default_font = ('微软雅黑', 10)
+        self.exif_info_text = tk.Text(info_frame, width=40, height=15, wrap=tk.WORD, font=default_font)
         self.exif_info_scrollbar = ttk.Scrollbar(info_frame, orient=tk.VERTICAL, command=self.exif_info_text.yview)
         self.exif_info_text.configure(yscrollcommand=self.exif_info_scrollbar.set)
         
@@ -137,7 +171,9 @@ class ExifCleanerGUI:
         deselect_all_btn.pack(side=tk.LEFT, padx=5, pady=5)
         
         # 标签列表
-        self.tags_listbox = tk.Listbox(options_frame, selectmode=tk.MULTIPLE, width=40, height=10)
+        # 设置统一字体
+        default_font = ('微软雅黑', 10)
+        self.tags_listbox = tk.Listbox(options_frame, selectmode=tk.MULTIPLE, width=40, height=10, font=default_font)
         self.tags_scrollbar = ttk.Scrollbar(options_frame, orient=tk.VERTICAL, command=self.tags_listbox.yview)
         self.tags_listbox.configure(yscrollcommand=self.tags_scrollbar.set)
         
@@ -158,17 +194,6 @@ class ExifCleanerGUI:
         self.status_var.set("就绪")
         status_bar = ttk.Label(main_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E))
-    
-    def _setup_drag_and_drop(self):
-        """设置拖拽功能"""
-        # 在Windows系统上，tkinter的拖拽支持有限，暂时不支持拖拽功能
-        pass
-    
-    def _on_drop(self, event):
-        """拖拽放下事件"""
-        self.drag_label.config(text="Drag images or folders here", foreground="black")
-        # 在Windows系统上，tkinter的拖拽支持有限，暂时移除拖拽功能
-        pass
     
     def _select_files(self):
         """选择文件"""
@@ -216,7 +241,6 @@ class ExifCleanerGUI:
         
         # 在后台线程中处理
         def process_files():
-            # 优化：添加进度回调，实时更新进度条
             def update_progress(progress):
                 self.progress_var.set(progress)
                 self.status_var.set(f"正在处理... {int(progress)}%")
@@ -251,7 +275,6 @@ class ExifCleanerGUI:
         
         # 在后台线程中处理
         def process_files():
-            # 优化：添加进度回调，实时更新进度条
             def update_progress(progress):
                 self.progress_var.set(progress)
                 self.status_var.set(f"正在处理... {int(progress)}%")
@@ -306,10 +329,24 @@ class ExifCleanerGUI:
     
     def _check_updates(self):
         """检查更新"""
+        # 显示检查中提示
+        self.status_var.set("正在检查更新...")
+        
         def check():
             update_info = self.update_checker.check_for_updates()
-            if update_info['update_available']:
-                self.root.after(0, lambda: self._show_update_message(update_info))
+            
+            # 更新UI
+            def update_ui():
+                if update_info['update_available']:
+                    self._show_update_message(update_info)
+                else:
+                    # 显示当前版本为最新版本
+                    current_version = self.version_manager.get_current_version()
+                    messagebox.showinfo("检查更新", f"当前版本 {current_version} 已是最新版本！")
+                # 恢复状态栏
+                self.status_var.set("就绪")
+            
+            self.root.after(0, update_ui)
         
         threading.Thread(target=check, daemon=True).start()
     
@@ -320,6 +357,133 @@ class ExifCleanerGUI:
         if messagebox.askyesno("发现更新", message + "\n\n是否访问发布页面？"):
             import webbrowser
             webbrowser.open(update_info['release_url'])
+    
+    def _show_about_dialog(self):
+        """显示关于对话框"""
+        # 创建关于窗口
+        about_window = tk.Toplevel(self.root)
+        about_window.title("关于 EXIF Cleaner")
+        about_window.geometry("500x400")
+        about_window.resizable(False, False)
+        about_window.transient(self.root)
+        about_window.grab_set()  # 模态窗口
+        
+        # 设置窗口居中
+        about_window.update_idletasks()
+        x = (about_window.winfo_screenwidth() - about_window.winfo_width()) // 2
+        y = (about_window.winfo_screenheight() - about_window.winfo_height()) // 2
+        about_window.geometry(f"500x400+{x}+{y}")
+        
+        # 创建主框架
+        main_frame = ttk.Frame(about_window, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 应用名称和版本
+        app_name = self.version_manager.get_app_name()
+        version = self.version_manager.get_current_version()
+        
+        # 标题区域
+        title_frame = ttk.Frame(main_frame)
+        title_frame.pack(pady=(0, 15))
+        
+        title_label = ttk.Label(title_frame, text=app_name, font=('微软雅黑', 18, 'bold'))
+        title_label.pack()
+        
+        version_label = ttk.Label(title_frame, text=f"版本 {version}", font=('微软雅黑', 10))
+        version_label.pack(pady=(5, 0))
+        
+        # 分割线
+        separator = ttk.Separator(main_frame, orient='horizontal')
+        separator.pack(fill=tk.X, pady=10)
+        
+        # 描述区域
+        desc_frame = ttk.Frame(main_frame)
+        desc_frame.pack(pady=10, fill=tk.X)
+        
+        desc_label = ttk.Label(
+            desc_frame,
+            text="一个用于批量删除图片EXIF信息的工具，支持多种图片格式，提供简洁直观的GUI界面。",
+            font=('微软雅黑', 10),
+            wraplength=450,
+            justify=tk.CENTER
+        )
+        desc_label.pack()
+        
+        # 信息区域
+        info_frame = ttk.Frame(main_frame)
+        info_frame.pack(pady=15, fill=tk.X)
+        
+        # 使用网格布局排列信息项
+        info_frame.columnconfigure(0, weight=1, minsize=120)
+        info_frame.columnconfigure(1, weight=2)
+        
+        # 作者信息
+        author_label = ttk.Label(info_frame, text="作者:", font=('微软雅黑', 10, 'bold'))
+        author_value = ttk.Label(info_frame, text="JasonShane", font=('微软雅黑', 10))
+        author_label.grid(row=0, column=0, sticky=tk.E, padx=5, pady=5)
+        author_value.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # 开源协议
+        license_label = ttk.Label(info_frame, text="开源协议:", font=('微软雅黑', 10, 'bold'))
+        license_value = ttk.Label(info_frame, text="MIT License", font=('微软雅黑', 10))
+        license_label.grid(row=1, column=0, sticky=tk.E, padx=5, pady=5)
+        license_value.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # 支持格式
+        format_label = ttk.Label(info_frame, text="支持格式:", font=('微软雅黑', 10, 'bold'))
+        format_value = ttk.Label(info_frame, text="JPG, JPEG, PNG, WEBP", font=('微软雅黑', 10))
+        format_label.grid(row=2, column=0, sticky=tk.E, padx=5, pady=5)
+        format_value.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # 技术栈
+        tech_label = ttk.Label(info_frame, text="技术栈:", font=('微软雅黑', 10, 'bold'))
+        tech_value = ttk.Label(info_frame, text="Python, tkinter, piexif, Pillow", font=('微软雅黑', 10))
+        tech_label.grid(row=3, column=0, sticky=tk.E, padx=5, pady=5)
+        tech_value.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # 添加GitHub仓库URL显示和按钮
+        github_frame = ttk.Frame(main_frame)
+        github_frame.pack(pady=15, fill=tk.X)
+        
+        # GitHub仓库URL显示
+        repo_url = self.version_manager.get_repository_url()
+        github_url_label = ttk.Label(github_frame, text=repo_url, foreground="#0066cc", cursor="hand2")
+        github_url_label.pack(pady=5)
+        
+        # GitHub 仓库按钮 - 更明显的位置和样式
+        github_btn = ttk.Button(
+            github_frame,
+            text="访问GitHub仓库",
+            command=lambda: self._open_github_repo(),
+            width=20
+        )
+        github_btn.pack(pady=10)
+        
+        # 关闭按钮
+        close_btn = ttk.Button(
+            main_frame,
+            text="关闭",
+            command=about_window.destroy,
+            width=15
+        )
+        close_btn.pack(pady=20)
+        
+        # 底部版权信息
+        copyright_label = ttk.Label(
+            main_frame,
+            text="© 2024 JasonShane. All rights reserved.",
+            font=('微软雅黑', 8)
+        )
+        copyright_label.pack(side=tk.BOTTOM, pady=10)
+    
+    def _open_github_repo(self):
+        """打开GitHub仓库"""
+        import webbrowser
+        repo_url = self.version_manager.get_repository_url()
+        if repo_url:
+            webbrowser.open(repo_url)
+        else:
+            messagebox.showinfo("提示", "未配置GitHub仓库地址")
     
     def run(self):
         """运行应用"""

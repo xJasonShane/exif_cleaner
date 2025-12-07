@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import requests
 from .version_manager import VersionManager
 
@@ -8,6 +10,7 @@ class UpdateChecker:
         self.version_manager = VersionManager()
         self.repository_url = self.version_manager.get_repository_url()
         self.api_url = self._get_api_url()
+        self._update_info_cache = None
     
     def _get_api_url(self):
         """从仓库URL生成GitHub API URL"""
@@ -22,11 +25,16 @@ class UpdateChecker:
     
     def check_for_updates(self):
         """检查是否有可用更新"""
+        # 使用缓存减少重复网络请求
+        if self._update_info_cache is not None:
+            return self._update_info_cache
+        
         if not self.api_url:
-            return {
+            self._update_info_cache = {
                 'update_available': False,
                 'error': 'Invalid repository URL'
             }
+            return self._update_info_cache
         
         try:
             headers = {
@@ -41,31 +49,35 @@ class UpdateChecker:
             release_url = release_data.get('html_url', '')
             
             if not latest_version:
-                return {
+                self._update_info_cache = {
                     'update_available': False,
                     'error': 'Could not get version from GitHub release'
                 }
+                return self._update_info_cache
             
             current_version = self.version_manager.get_current_version()
             update_available = self.version_manager.is_newer_version(latest_version)
             
-            return {
+            self._update_info_cache = {
                 'update_available': update_available,
                 'current_version': current_version,
                 'latest_version': latest_version,
                 'release_notes': release_notes,
                 'release_url': release_url
             }
+            return self._update_info_cache
         except requests.RequestException as e:
-            return {
+            self._update_info_cache = {
                 'update_available': False,
                 'error': f'Network error: {str(e)}'
             }
+            return self._update_info_cache
         except Exception as e:
-            return {
+            self._update_info_cache = {
                 'update_available': False,
                 'error': f'Error checking for updates: {str(e)}'
             }
+            return self._update_info_cache
     
     def get_update_info(self):
         """获取更新信息"""

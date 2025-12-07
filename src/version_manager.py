@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import json
 import os
 from pathlib import Path
@@ -6,9 +8,16 @@ class VersionManager:
     """版本管理类"""
     
     def __init__(self, version_file_path=None):
-        self.version_file = version_file_path or os.path.join(
-            Path(__file__).parent.parent, 'config', 'version.json'
-        )
+        # 处理PyInstaller打包环境
+        import sys
+        if hasattr(sys, '_MEIPASS'):
+            # 打包后的环境
+            base_path = sys._MEIPASS
+        else:
+            # 开发环境
+            base_path = str(Path(__file__).parent.parent)
+        
+        self.version_file = version_file_path or os.path.join(base_path, 'config', 'version.json')
         self.version_data = self._load_version_data()
     
     def _load_version_data(self):
