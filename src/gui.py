@@ -13,7 +13,8 @@ class ExifCleanerGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.geometry("800x600")
+        
+        self.root.geometry("1280x800")
         self.root.resizable(True, True)
         
         # 初始化组件
@@ -21,6 +22,16 @@ class ExifCleanerGUI:
         self.exif_processor = ExifProcessor()
         self.update_checker = UpdateChecker()
         self.version_manager = VersionManager()
+        
+        # 字体管理 - 统一变量，方便后续一键切换
+        self.fonts = {
+            'family': '微软雅黑',
+            'default': ('微软雅黑', 10),
+            'title': ('微软雅黑', 16, 'bold'),
+            'large': ('微软雅黑', 12),
+            'small': ('微软雅黑', 8),
+            'bold': ('微软雅黑', 10, 'bold')
+        }
         
         # 设置标题
         app_name = self.version_manager.get_app_name()
@@ -35,15 +46,35 @@ class ExifCleanerGUI:
     
     def _create_widgets(self):
         """创建UI组件"""
-        # 设置统一字体
-        default_font = ('微软雅黑', 10)
-        
         # 为所有ttk组件设置统一字体
         style = ttk.Style()
-        style.configure('.', font=default_font)
+        
+        # 尝试使用系统可用的字体，确保兼容性
+        try:
+            # 对于中文系统，优先使用微软雅黑
+            style.configure('.', font=self.fonts['default'])
+            
+            # 标题样式
+            style.configure('Title.TLabel', font=self.fonts['title'])
+            
+            # 大号字体样式
+            style.configure('Large.TLabel', font=self.fonts['large'])
+            
+            # 小号字体样式
+            style.configure('Small.TLabel', font=self.fonts['small'])
+            
+            # 粗体样式
+            style.configure('Bold.TLabel', font=self.fonts['bold'])
+        except Exception as e:
+            # 如果字体设置失败，使用系统默认字体
+            print(f"字体设置失败: {e}")
+            style.configure('.', font=('Helvetica', 10))
+            style.configure('Title.TLabel', font=('Helvetica', 16, 'bold'))
+            style.configure('Large.TLabel', font=('Helvetica', 12))
+            style.configure('Small.TLabel', font=('Helvetica', 8))
+            style.configure('Bold.TLabel', font=('Helvetica', 10, 'bold'))
         
         # 添加强调按钮样式
-        style = ttk.Style()
         style.configure('Accent.TButton', foreground='#000000', background='#0078d4')
         style.map('Accent.TButton', 
                   foreground=[('pressed', '#ffffff'), ('active', '#ffffff')],
@@ -65,13 +96,13 @@ class ExifCleanerGUI:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(2, weight=1)
+        main_frame.rowconfigure(3, weight=1)  # 已选择文件区域现在在row=3
         main_frame.rowconfigure(4, weight=1)
         
         # 标题
         app_name = self.version_manager.get_app_name()
         version = self.version_manager.get_current_version()
-        title_label = ttk.Label(main_frame, text=f"{app_name} v{version}", font=('Arial', 16, 'bold'))
+        title_label = ttk.Label(main_frame, text=f"{app_name} v{version}", style='Title.TLabel')
         title_label.grid(row=0, column=0, columnspan=3, pady=10)
         
         # 操作按钮框架
@@ -102,9 +133,17 @@ class ExifCleanerGUI:
         self.about_btn = ttk.Button(button_frame, text="关于", command=self._show_about_dialog)
         self.about_btn.pack(side=tk.RIGHT, padx=5)
         
+        # 拖拽提示
+        drag_frame = ttk.LabelFrame(main_frame, text="拖拽区域")
+        drag_frame.grid(row=2, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E))
+        drag_frame.columnconfigure(0, weight=1)
+        
+        self.drag_label = ttk.Label(drag_frame, text="将图片或文件夹拖拽到此处", style='Large.TLabel')
+        self.drag_label.grid(row=0, column=0, pady=20)
+        
         # 文件列表框架
         file_frame = ttk.LabelFrame(main_frame, text="已选择文件")
-        file_frame.grid(row=2, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
+        file_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
         file_frame.columnconfigure(0, weight=1)
         file_frame.rowconfigure(0, weight=1)
         
@@ -125,16 +164,6 @@ class ExifCleanerGUI:
         self.file_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         file_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
-        # 拖拽提示
-        drag_frame = ttk.LabelFrame(main_frame, text="拖拽区域")
-        drag_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E))
-        drag_frame.columnconfigure(0, weight=1)
-        
-        # 设置统一字体
-        default_font = ('微软雅黑', 12)
-        self.drag_label = ttk.Label(drag_frame, text="将图片或文件夹拖拽到此处", font=default_font)
-        self.drag_label.grid(row=0, column=0, pady=20)
-        
         # EXIF信息和选项框架
         exif_frame = ttk.LabelFrame(main_frame, text="EXIF选项")
         exif_frame.grid(row=4, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -148,9 +177,7 @@ class ExifCleanerGUI:
         info_frame.columnconfigure(0, weight=1)
         info_frame.rowconfigure(0, weight=1)
         
-        # 设置统一字体
-        default_font = ('微软雅黑', 10)
-        self.exif_info_text = tk.Text(info_frame, width=40, height=15, wrap=tk.WORD, font=default_font)
+        self.exif_info_text = tk.Text(info_frame, width=40, height=15, wrap=tk.WORD, font=('微软雅黑', 10))
         self.exif_info_scrollbar = ttk.Scrollbar(info_frame, orient=tk.VERTICAL, command=self.exif_info_text.yview)
         self.exif_info_text.configure(yscrollcommand=self.exif_info_scrollbar.set)
         
@@ -171,9 +198,7 @@ class ExifCleanerGUI:
         deselect_all_btn.pack(side=tk.LEFT, padx=5, pady=5)
         
         # 标签列表
-        # 设置统一字体
-        default_font = ('微软雅黑', 10)
-        self.tags_listbox = tk.Listbox(options_frame, selectmode=tk.MULTIPLE, width=40, height=10, font=default_font)
+        self.tags_listbox = tk.Listbox(options_frame, selectmode=tk.MULTIPLE, width=40, height=10, font=('微软雅黑', 10))
         self.tags_scrollbar = ttk.Scrollbar(options_frame, orient=tk.VERTICAL, command=self.tags_listbox.yview)
         self.tags_listbox.configure(yscrollcommand=self.tags_scrollbar.set)
         
@@ -386,10 +411,10 @@ class ExifCleanerGUI:
         title_frame = ttk.Frame(main_frame)
         title_frame.pack(pady=(0, 15))
         
-        title_label = ttk.Label(title_frame, text=app_name, font=('微软雅黑', 18, 'bold'))
+        title_label = ttk.Label(title_frame, text=app_name, style='Title.TLabel')
         title_label.pack()
         
-        version_label = ttk.Label(title_frame, text=f"版本 {version}", font=('微软雅黑', 10))
+        version_label = ttk.Label(title_frame, text=f"版本 {version}")
         version_label.pack(pady=(5, 0))
         
         # 分割线
@@ -403,7 +428,6 @@ class ExifCleanerGUI:
         desc_label = ttk.Label(
             desc_frame,
             text="一个用于批量删除图片EXIF信息的工具，支持多种图片格式，提供简洁直观的GUI界面。",
-            font=('微软雅黑', 10),
             wraplength=450,
             justify=tk.CENTER
         )
@@ -418,26 +442,26 @@ class ExifCleanerGUI:
         info_frame.columnconfigure(1, weight=2)
         
         # 作者信息
-        author_label = ttk.Label(info_frame, text="作者:", font=('微软雅黑', 10, 'bold'))
-        author_value = ttk.Label(info_frame, text="JasonShane", font=('微软雅黑', 10))
+        author_label = ttk.Label(info_frame, text="作者:", style='Bold.TLabel')
+        author_value = ttk.Label(info_frame, text="JasonShane")
         author_label.grid(row=0, column=0, sticky=tk.E, padx=5, pady=5)
         author_value.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
         
         # 开源协议
-        license_label = ttk.Label(info_frame, text="开源协议:", font=('微软雅黑', 10, 'bold'))
-        license_value = ttk.Label(info_frame, text="MIT License", font=('微软雅黑', 10))
+        license_label = ttk.Label(info_frame, text="开源协议:", style='Bold.TLabel')
+        license_value = ttk.Label(info_frame, text="MIT License")
         license_label.grid(row=1, column=0, sticky=tk.E, padx=5, pady=5)
         license_value.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
         
         # 支持格式
-        format_label = ttk.Label(info_frame, text="支持格式:", font=('微软雅黑', 10, 'bold'))
-        format_value = ttk.Label(info_frame, text="JPG, JPEG, PNG, WEBP", font=('微软雅黑', 10))
+        format_label = ttk.Label(info_frame, text="支持格式:", style='Bold.TLabel')
+        format_value = ttk.Label(info_frame, text="JPG, JPEG, PNG, WEBP")
         format_label.grid(row=2, column=0, sticky=tk.E, padx=5, pady=5)
         format_value.grid(row=2, column=1, sticky=tk.W, padx=5, pady=5)
         
         # 技术栈
-        tech_label = ttk.Label(info_frame, text="技术栈:", font=('微软雅黑', 10, 'bold'))
-        tech_value = ttk.Label(info_frame, text="Python, tkinter, piexif, Pillow", font=('微软雅黑', 10))
+        tech_label = ttk.Label(info_frame, text="技术栈:", style='Bold.TLabel')
+        tech_value = ttk.Label(info_frame, text="Python, tkinter, piexif, Pillow")
         tech_label.grid(row=3, column=0, sticky=tk.E, padx=5, pady=5)
         tech_value.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
         
@@ -472,7 +496,7 @@ class ExifCleanerGUI:
         copyright_label = ttk.Label(
             main_frame,
             text="© 2024 JasonShane. All rights reserved.",
-            font=('微软雅黑', 8)
+            style='Small.TLabel'
         )
         copyright_label.pack(side=tk.BOTTOM, pady=10)
     
