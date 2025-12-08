@@ -1,5 +1,5 @@
 {
-  "version": "Beta 0.2.0",
+  "version": "Beta 0.3.0",
   "app_name": "EXIF Cleaner",
   "description": "一款批量删除图片EXIF信息的工具",
   "repository": "https://github.com/xJasonShane/exif_cleaner"
