@@ -53,7 +53,8 @@ class ExifCleanerGUI:
         self.root.title(f"{app_name} - EXIF清除工具")
         
         # 数据
-        self.selected_files = []
+        self.selected_files = set()
+        self.file_path_to_item_id = {}  # 映射：规范化文件路径 -> Treeview项目ID
         self.exif_tags_to_remove = []
         
         # EXIF标签相关
@@ -259,17 +260,31 @@ class ExifCleanerGUI:
             self._add_files_to_list(file_paths)
     
     def _add_files_to_list(self, file_paths):
-        """将文件添加到列表"""
+        """将文件添加到列表，避免重复"""
+        added_count = 0
+        
         for file_path in file_paths:
-            if file_path not in self.selected_files:
-                self.selected_files.append(file_path)
+            normalized_path = self._normalize_path(file_path)
+            
+            # 检查是否已存在，避免重复添加
+            if normalized_path not in self.selected_files:
+                self.selected_files.add(normalized_path)
                 file_info = self.file_handler.get_file_info(file_path)
-                self.file_tree.insert('', tk.END, values=(file_info['name'], file_info['size'], file_path))
+                # 插入Treeview并保存项目ID映射
+                item_id = self.file_tree.insert('', tk.END, values=(file_info['name'], file_info['size'], file_path))
+                self.file_path_to_item_id[normalized_path] = item_id
+                added_count += 1
+        
         self.status_var.set(f"已选择 {len(self.selected_files)} 个文件")
         
         # 如果只有一个文件被选择，更新EXIF信息和复选框状态
         if len(self.selected_files) == 1:
-            self._update_exif_info(self.selected_files[0])
+            # 从集合中获取第一个元素
+            first_file_path = next(iter(self.selected_files))
+            # 注意：这里需要使用原始路径，因为_normalize_path返回的是绝对路径，而UI显示需要保持原始路径
+            # 但实际上，我们存储的是规范化路径，所以需要找到对应的原始路径
+            # 不过对于当前逻辑，我们可以直接使用规范化路径来获取EXIF信息
+            self._update_exif_info(first_file_path)
     
     def _update_exif_info(self, file_path):
         """更新EXIF信息和复选框状态"""
@@ -289,8 +304,11 @@ class ExifCleanerGUI:
     def _clear_list(self):
         """清空文件列表"""
         self.selected_files.clear()
+        self.file_path_to_item_id.clear()
+        
         for item in self.file_tree.get_children():
             self.file_tree.delete(item)
+        
         self.status_var.set("就绪")
         self.current_image_exif = {}
         
@@ -518,7 +536,7 @@ class ExifCleanerGUI:
     
     def _save_single_copy_with_suffix(self):
         """保存单个文件的副本，自动添加_副本后缀"""
-        file_path = self.selected_files[0]
+        file_path = next(iter(self.selected_files))
         file_dir = os.path.dirname(file_path)
         
         # 打开文件夹选择对话框
@@ -656,21 +674,27 @@ class ExifCleanerGUI:
     
     def _replace_with_copy(self, original_path, copy_path):
         """将选中的文件替换为副本文件"""
-        # 找到原始文件在列表中的索引
-        if original_path in self.selected_files:
-            index = self.selected_files.index(original_path)
-            # 替换列表中的文件路径
-            self.selected_files[index] = copy_path
+        # 规范化路径
+        original_normalized = self._normalize_path(original_path)
+        copy_normalized = self._normalize_path(copy_path)
+        
+        # 检查原始文件是否存在于集合中
+        if original_normalized in self.selected_files:
+            # 从集合中移除原始文件，添加副本文件
+            self.selected_files.remove(original_normalized)
+            self.selected_files.add(copy_normalized)
         
         # 更新文件树中的显示
-        for item in self.file_tree.get_children():
-            values = self.file_tree.item(item, 'values')
-            if values[2] == original_path:
-                # 获取副本文件信息
-                copy_info = self.file_handler.get_file_info(copy_path)
-                # 更新文件树
-                self.file_tree.item(item, values=(copy_info['name'], copy_info['size'], copy_path))
-                break
+        # 使用映射表快速查找项目ID
+        if original_normalized in self.file_path_to_item_id:
+            item_id = self.file_path_to_item_id[original_normalized]
+            # 获取副本文件信息
+            copy_info = self.file_handler.get_file_info(copy_path)
+            # 更新文件树
+            self.file_tree.item(item_id, values=(copy_info['name'], copy_info['size'], copy_path))
+            # 更新映射表
+            self.file_path_to_item_id.pop(original_normalized)
+            self.file_path_to_item_id[copy_normalized] = item_id
     
     def _show_update_message(self, update_info):
         """显示更新消息"""
@@ -852,6 +876,18 @@ class ExifCleanerGUI:
             # 保存变量和复选框，使用英文标签名作为键
             self.exif_var_dict[tag_name] = var
             self.exif_checkboxes[tag_name] = checkbox
+    
+    def _normalize_path(self, file_path):
+        """规范化文件路径，消除不同路径表示方式的差异
+        
+        Args:
+            file_path: 原始文件路径
+            
+        Returns:
+            规范化后的文件路径
+        """
+        # 转换为绝对路径，统一大小写（Windows不区分大小写），统一路径分隔符
+        return os.path.normcase(os.path.abspath(file_path))
     
     def _get_all_exif_tags(self):
         """获取精简的可删除EXIF标签，返回中英文对照字典"""
