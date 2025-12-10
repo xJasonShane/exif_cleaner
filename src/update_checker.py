@@ -85,8 +85,8 @@ class UpdateChecker:
             headers = {
                 'Accept': 'application/vnd.github.v3+json'
             }
-            # 发送GET请求获取最新release信息
-            response = requests.get(self.api_url, headers=headers, timeout=10)
+            # 发送GET请求获取最新release信息，添加verify=False选项以处理SSL证书验证问题
+            response = requests.get(self.api_url, headers=headers, timeout=10, verify=False)
             response.raise_for_status()  # 检查请求是否成功
             
             # 解析JSON响应
