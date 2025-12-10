@@ -1,5 +1,42 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+EXIF Cleaner GUI模块，负责应用的用户界面设计和事件处理
+
+该模块实现了EXIF Cleaner应用的图形用户界面，包括：
+- 主窗口设计和布局
+- 菜单和按钮组件
+- 文件选择和处理功能
+- EXIF信息显示和选择性删除
+- 进度显示和状态更新
+- 关于对话框和更新检查
+- 拖拽支持
+
+主要功能区域：
+1. 标题和操作按钮区域
+2. 拖拽区域
+3. 已选择文件列表
+4. EXIF信息列表和操作选项
+5. 进度条和状态栏
+
+技术依赖：
+- tkinter: 用于GUI界面设计
+- ttk: 用于现代化的UI组件
+- threading: 用于后台处理，避免UI阻塞
+- os: 用于文件操作
+- shutil: 用于文件复制
+- 内部模块：FileHandler, ExifProcessor, UpdateChecker, VersionManager
+
+设计特点：
+- 采用模块化设计，分离UI和业务逻辑
+- 支持中文界面
+- 响应式布局，支持窗口大小调整
+- 统一的字体管理
+- 清晰的视觉层次
+- 完善的错误处理
+- 支持后台处理和进度显示
+- 支持批量操作
+"""
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
@@ -11,9 +48,14 @@ from .update_checker import UpdateChecker
 from .version_manager import VersionManager
 
 class ExifCleanerGUI:
-    """EXIF Cleaner GUI界面"""
+    """EXIF Cleaner GUI界面类，负责应用的用户界面设计和事件处理"""
     
     def __init__(self, root):
+        """初始化GUI应用，设置窗口大小、位置和组件
+        
+        Args:
+            root: Tkinter根窗口对象
+        """
         self.root = root
         
         # 设置窗口大小
@@ -32,7 +74,7 @@ class ExifCleanerGUI:
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.root.resizable(True, True)
         
-        # 初始化组件
+        # 初始化组件 - 依赖注入模式
         self.file_handler = FileHandler()
         self.exif_processor = ExifProcessor()
         self.update_checker = UpdateChecker()
@@ -52,17 +94,17 @@ class ExifCleanerGUI:
         app_name = self.version_manager.get_app_name()
         self.root.title(f"{app_name} - EXIF清除工具")
         
-        # 数据
-        self.selected_files = set()
+        # 数据管理
+        self.selected_files = set()  # 存储已选择的文件路径，使用集合避免重复
         self.file_path_to_item_id = {}  # 映射：规范化文件路径 -> Treeview项目ID
-        self.exif_tags_to_remove = []
+        self.exif_tags_to_remove = []  # 存储要删除的EXIF标签
         
-        # EXIF标签相关
+        # EXIF标签相关数据
         self.all_exif_tags = self._get_all_exif_tags()  # 所有可能的EXIF标签
         self.exif_checkboxes = {}  # 存储所有EXIF标签的复选框
         self.current_image_exif = {}  # 当前选中图片的EXIF信息
         
-        # 创建UI
+        # 创建UI组件
         self._create_widgets()
     
     def _create_widgets(self):
@@ -467,17 +509,20 @@ class ExifCleanerGUI:
         threading.Thread(target=check, daemon=True).start()
     
     def _show_delete_confirm(self):
-        """显示删除确认对话框，包含副本选项"""
+        """显示删除确认对话框，包含副本选项
+        
+        该方法创建一个模态对话框，询问用户是否要删除所选文件的EXIF信息，并提供创建副本后处理的选项。
+        """
         if not self.selected_files:
             messagebox.showwarning("警告", "未选择文件")
             return
         
-        # 创建对话框窗口
+        # 创建对话框窗口 - 模态窗口
         dialog = tk.Toplevel(self.root)
         dialog.title("删除确认")
         dialog.geometry("400x250")
-        dialog.transient(self.root)
-        dialog.grab_set()  # 模态窗口
+        dialog.transient(self.root)  # 设置为父窗口的子窗口
+        dialog.grab_set()  # 模态窗口，阻止对其他窗口的操作
         
         # 设置窗口居中
         dialog.update_idletasks()
@@ -496,7 +541,7 @@ class ExifCleanerGUI:
         # 添加提示文本
         ttk.Label(frame, text=f"确定要删除 {len(self.selected_files)} 个文件的EXIF信息吗？").pack(anchor=tk.W, pady=5)
         
-        # 添加副本选项
+        # 添加副本选项 - 默认为False
         self.create_copy_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(frame, text="创建副本后处理", variable=self.create_copy_var).pack(anchor=tk.W, pady=5)
         
@@ -509,15 +554,21 @@ class ExifCleanerGUI:
         ttk.Button(button_frame, text="取消", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
     
     def _handle_delete_confirm(self, dialog):
-        """处理删除确认对话框的用户选择"""
+        """处理删除确认对话框的用户选择
+        
+        Args:
+            dialog: 确认对话框窗口对象
+            
+        根据用户的选择，决定是创建副本后处理还是直接处理源文件。
+        """
         create_copy = self.create_copy_var.get()
         dialog.destroy()
         
         if create_copy:
-            # 创建副本后处理
+            # 用户选择创建副本后处理，显示副本保存对话框
             self._show_copy_dialog()
         else:
-            # 直接处理源文件
+            # 用户选择直接处理源文件，执行删除所有EXIF信息操作
             self._remove_all_exif()
     
     def _show_copy_dialog(self):
